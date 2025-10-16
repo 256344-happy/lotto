@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>로또 번호 추첨기</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #111831;
+    --accent: #6ea8fe;
+    --text: #e6e8ef;
+    --muted: #9aa3b2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: grid; place-items: center;
+    background: radial-gradient(1200px 800px at 70% -10%, #1a254b 0%, var(--bg) 60%);
+    color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+  }
+  .card {
+    width: min(920px, 92vw); background: linear-gradient(180deg, #121a36, var(--card));
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px; padding: 28px 24px 22px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  h1 {
+    margin: 0 0 8px; font-size: clamp(22px, 3.5vw, 28px); font-weight: 700; letter-spacing: .3px;
+  }
+  .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .balls {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+    padding: 8px 2px 18px;
+  }
+  .ball {
+    aspect-ratio: 1/1; border-radius: 999px;
+    display: grid; place-items: center;
+    font-weight: 800; font-size: clamp(20px, 4.5vw, 32px);
+    color: #0c0f1a; user-select: none;
+    background: radial-gradient(circle at 30% 28%, #ffffff, #dfe8ff 40%, #b9c7ff 65%, #97a7ff 85%, #7f8cff);
+    box-shadow:
+      inset 6px 10px 18px rgba(255,255,255,.6),
+      inset -10px -16px 24px rgba(0,0,0,.25),
+      0 12px 26px rgba(0,0,0,.35);
+    transform: translateY(10px) scale(.96);
+    opacity: .5;
+    transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s;
+    position: relative; overflow: hidden;
+  }
+  .ball::after { /* 하이라이트 링 */
+    content: ""; position: absolute; inset: 0;
+    border-radius: inherit; pointer-events: none;
+    background: radial-gradient(120px 60px at 35% 22%, rgba(255,255,255,.85), transparent 60%);
+    mix-blend-mode: screen; opacity: .9;
+  }
+  .ball.active {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  .ball .num {
+    filter: drop-shadow(0 1px 0 rgba(255,255,255,.9));
+  }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    margin-top: 6px;
+  }
+  .left { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  button {
+    appearance: none; border: 0; cursor: pointer;
+    padding: 12px 18px; border-radius: 12px;
+    background: linear-gradient(180deg, #8cb6ff, var(--accent));
+    color: #0b132b; font-weight: 800; letter-spacing: .2px;
+    box-shadow: 0 10px 18px rgba(110,168,254,.35), inset 0 1px 0 rgba(255,255,255,.7);
+    transition: transform .12s ease, filter .12s ease, box-shadow .2s ease;
+  }
+  button:hover { filter: brightness(1.05); }
+  button:active { transform: translateY(1px) scale(.99); }
+  button[disabled] { opacity: .7; filter: grayscale(.2) brightness(.9); cursor: not-allowed; }
+
+  .hint { color: var(--muted); font-size: 12px; }
+  .history {
+    margin-top: 18px; border-top: 1px dashed rgba(255,255,255,.12); padding-top: 12px;
+    color: var(--muted); font-size: 13px;
+  }
+  .chip {
+    display: inline-grid; place-items: center;
+    width: 30px; height: 30px; border-radius: 999px;
+    background: rgba(255,255,255,.08); color: #e8ecff; font-weight: 700; margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+  <main class="card" role="region" aria-label="로또 번호 추첨기">
+    <h1>로또 번호 추첨기</h1>
+    <p class="sub">클릭할 때마다 1–45 중 중복 없이 6개의 번호가 실제 방송처럼 순차 등장합니다.</p>
+
+    <section class="balls" aria-live="polite">
+      <div class="ball"><span class="num">—</span></div>
+      <div class="ball"><span class="num">—</span></div>
+      <div class="ball"><span class="num">—</span></div>
+      <div class="ball"><span class="num">—</span></div>
+      <div class="ball"><span class="num">—</span></div>
+      <div class="ball"><span class="num">—</span></div>
+    </section>
+
+    <div class="controls">
+      <div class="left">
+        <button id="drawBtn" type="button">추첨 시작</button>
+        <button id="clearBtn" type="button">초기화</button>
+        <span class="hint">애니메이션 중엔 버튼이 잠깁니다.</span>
+      </div>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;">
+        <input id="sortToggle" type="checkbox" />
+        결과를 오름차순으로 표시
+      </label>
+    </div>
+
+    <div class="history" id="history" aria-live="polite"></div>
+  </main>
+
+<script>
+(() => {
+  const COUNT = 6;
+  const MAX = 45;
+  const balls = [...document.querySelectorAll('.ball')];
+  const drawBtn = document.getElementById('drawBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const historyEl = document.getElementById('history');
+  const sortToggle = document.getElementById('sortToggle');
+
+  function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+  function genSix() {
+    const set = new Set();
+    while (set.size < COUNT) set.add(randInt(1, MAX));
+    return [...set];
+  }
+
+  function resetUI() {
+    balls.forEach(b => {
+      b.classList.remove('active');
+      b.querySelector('.num').textContent = '—';
+    });
+  }
+
+  function animateReveal(el, finalNumber, delayMs = 0) {
+    const numEl = el.querySelector('.num');
+    let t;
+    setTimeout(() => {
+      el.classList.add('active');
+      // 짧은 "굴림" 효과
+      t = setInterval(() => { numEl.textContent = randInt(1, MAX); }, 50);
+      setTimeout(() => { clearInterval(t); numEl.textContent = finalNumber; }, 900);
+    }, delayMs);
+  }
+
+  async function draw() {
+    drawBtn.disabled = true;
+    clearBtn.disabled = true;
+    resetUI();
+
+    let nums = genSix();
+    // 표시만 정렬: 실제 추첨 순서를 유지하려면 아래 줄을 주석 처리
+    const shown = sortToggle.checked ? [...nums].sort((a,b)=>a-b) : nums;
+
+    // 6개의 공을 0.95초 간격으로 순차 등장
+    shown.forEach((n, i) => animateReveal(balls[i], n, i * 950));
+
+    // 히스토리 표시(+마지막 공이 멈출 때쯤 추가)
+    setTimeout(() => {
+      const row = document.createElement('div');
+      row.style.marginTop = '8px';
+      shown.forEach(n => {
+        const c = document.createElement('span');
+        c.className = 'chip';
+        c.textContent = n;
+        row.appendChild(c);
+      });
+      historyEl.prepend(row);
+      drawBtn.disabled = false;
+      clearBtn.disabled = false;
+    }, 950 * COUNT + 50);
+  }
+
+  drawBtn.addEventListener('click', draw);
+  clearBtn.addEventListener('click', () => {
+    resetUI();
+    historyEl.textContent = '';
+  });
+})();
+</script>
+</body>
+</html>
